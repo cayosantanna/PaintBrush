@@ -4,8 +4,8 @@
  */
 package model;
 
+import java.awt.Color;
 import java.awt.Graphics;
-
 
 /*Classe Borracha herda atributos e métodos da classe Retangulo*/
 public class Borracha extends Retangulo {
@@ -15,10 +15,15 @@ public class Borracha extends Retangulo {
     }
     
     @Override
-    public void desenhar(Graphics g){
-        g.setColor (corInterna);
-        g.fillRect(super.x - largura/2, super.y - largura/2, largura, largura);/*desenhar um retangulo preenchida com essas coordenadas*/
+    public void desenhar(Graphics g) {
+        java.awt.Graphics2D g2 = (java.awt.Graphics2D) g;
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(corInterna);
+        g2.fillRect(x - largura / 2, y - largura / 2, largura, largura);
+        // Feedback visual com contorno suave
+        g2.setColor(new Color(200, 200, 200));
+        g2.drawRect(x - largura / 2, y - largura / 2, largura, largura);
     }
     
 }
-    
+

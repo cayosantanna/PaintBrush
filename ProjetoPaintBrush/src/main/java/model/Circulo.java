@@ -4,7 +4,6 @@
  */
 package model;
 
-import java.awt.Color;
 import java.awt.Graphics;
 
 public class Circulo extends D2 {
@@ -18,11 +17,15 @@ public class Circulo extends D2 {
     public float perimetro() { return 2 * PI * raio;}
     
     @Override public void desenhar(Graphics g){
-       g.setColor(corInterna);
-       g.fillOval(x - raio, y - raio, 2 * raio, 2 * raio); /*desenhar o circulo preenchido*/
-       g.setColor(cor);
-       g.drawOval(x - raio, y - raio, 2 * raio, 2 * raio); /*desenhar o circulo não preenchido*/
-       g.setColor(Color.BLACK);
-       super.desenhar(g);
+        java.awt.Graphics2D g2 = (java.awt.Graphics2D) g;
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(corInterna);
+        g2.fillOval(x - raio, y - raio, 2 * raio, 2 * raio);
+        g2.setColor(cor);
+        g2.drawOval(x - raio, y - raio, 2 * raio, 2 * raio);
+        if (exibirArea) {
+            g2.drawString(String.format("Área: %.2f", area()), x - raio / 2, y);
+        }
+        super.desenhar(g);
     }
 }

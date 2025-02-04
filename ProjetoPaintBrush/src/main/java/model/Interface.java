@@ -5,6 +5,21 @@
 package model;
 
 import java.awt.event.MouseEvent;
+import java.util.Stack;
+import java.awt.image.BufferedImage;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyAdapter;
+import java.awt.Graphics2D;
+import java.awt.Color;
+import java.awt.AlphaComposite;
+import javax.imageio.ImageIO;
+import javax.swing.JFileChooser;
+import javax.swing.JSlider;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import java.io.File;
 
 public class Interface extends javax.swing.JFrame {
     private enum TipoFigura {tfPonto, tfReta, tfCirculo, tfRetangulo, tfSpray, tfBorracha, tfPiramide, tfCilindro, tfPoligono}
@@ -17,11 +32,233 @@ public class Interface extends javax.swing.JFrame {
     private Spray spray = new Spray();
     private Cilindro cilindro = new Cilindro();
     private Piramide piramide = new Piramide();
+    private Stack<BufferedImage> undoStack = new Stack<>();
+    private Stack<BufferedImage> redoStack = new Stack<>();
+    private float zoomFactor = 1.0f;
+    private BufferedImage previewLayer;
+    private JSlider spraySlider;
+    private JLabel sprayLabel;
+    
+    private void salvarEstado() {
+        BufferedImage bi = new BufferedImage(pnlPaint.getWidth(), pnlPaint.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        pnlPaint.paint(bi.getGraphics());
+        undoStack.push(bi);
+        redoStack.clear();
+    }
+    
+    public void desfazer() {
+        if(!undoStack.isEmpty()) {
+            BufferedImage bi = undoStack.pop();
+            redoStack.push(bi);
+            pnlPaint.getGraphics().drawImage(bi, 0, 0, null);
+        }
+    }
+    
+    public void refazer() {
+        if(!redoStack.isEmpty()) {
+            BufferedImage bi = redoStack.pop();
+            undoStack.push(bi);
+            pnlPaint.getGraphics().drawImage(bi, 0, 0, null);
+        }
+    }
     /**
      * Creates new form Interface
      */
     public Interface() {
         initComponents();
+        previewLayer = new BufferedImage(1600, 900, BufferedImage.TYPE_INT_ARGB);
+        
+        // Adiciona controle de zoom
+        pnlPaint.addMouseWheelListener(e -> {
+            if (e.isControlDown()) {
+                if (e.getWheelRotation() < 0) {
+                    zoomFactor *= 1.1f;
+                } else {
+                    zoomFactor /= 1.1f;
+                }
+                atualizarZoom();
+            }
+        });
+        
+        // Consolida o listener para preview e feedback da borracha
+        pnlPaint.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(java.awt.event.MouseEvent evt) {
+                if (tipoFigura == TipoFigura.tfBorracha) {
+                    mostrarTamanhoBorracha();
+                } else {
+                    atualizarPreview(evt);
+                }
+            }
+        });
+        
+        // Adicionar key listener ao painel
+        pnlPaint.setFocusable(true);
+        pnlPaint.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.isControlDown()) {
+                    if (e.getKeyCode() == KeyEvent.VK_PLUS || e.getKeyCode() == KeyEvent.VK_EQUALS) {
+                        if (tipoFigura == TipoFigura.tfBorracha) {
+                            borracha = new Borracha(borracha.largura + 5);
+                            mostrarTamanhoBorracha();
+                        }
+                    } else if (e.getKeyCode() == KeyEvent.VK_MINUS) {
+                        if (tipoFigura == TipoFigura.tfBorracha && borracha.largura > 10) {
+                            borracha = new Borracha(borracha.largura - 5);
+                            mostrarTamanhoBorracha();
+                        }
+                    } else if (e.getKeyCode() == KeyEvent.VK_Z) {
+                        desfazer();
+                    } else if (e.getKeyCode() == KeyEvent.VK_Y) {
+                        refazer();
+                    }
+                }
+            }
+        });
+
+        // Adiciona mouse motion listener para preview
+        pnlPaint.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseMoved(java.awt.event.MouseEvent evt) {
+                if (tipoFigura == TipoFigura.tfBorracha) {
+                    mostrarTamanhoBorracha();
+                }
+            }
+        });
+        
+        // Adiciona controle de tamanho do Spray
+        spraySlider = new JSlider(JSlider.HORIZONTAL, 5, 30, 8);
+        spraySlider.setBounds(10, pnlPaint.getHeight() + 50, 200, 50);
+        spraySlider.setVisible(false);
+        sprayLabel = new JLabel("Tamanho do Spray:");
+        sprayLabel.setBounds(10, pnlPaint.getHeight() + 30, 200, 20);
+        sprayLabel.setVisible(false);
+        
+        add(spraySlider);
+        add(sprayLabel);
+        
+        spraySlider.addChangeListener(e -> {
+            if (tipoFigura == TipoFigura.tfSpray) {
+                spray.raio = spraySlider.getValue();
+            }
+        });
+        
+        // Adiciona menu para salvar/carregar
+        JMenuBar menuBar = new JMenuBar();
+        JMenu menu = new JMenu("Arquivo");
+        JMenuItem salvar = new JMenuItem("Salvar");
+        JMenuItem carregar = new JMenuItem("Carregar");
+        
+        salvar.addActionListener(e -> salvarDesenho());
+        carregar.addActionListener(e -> carregarDesenho());
+        
+        menu.add(salvar);
+        menu.add(carregar);
+        menuBar.add(menu);
+        setJMenuBar(menuBar);
+    }
+
+    private void mostrarTamanhoBorracha() {
+        // Cria e atualiza camada temporária para feedback visual
+        BufferedImage temp = new BufferedImage(pnlPaint.getWidth(), pnlPaint.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = temp.createGraphics();
+        g2.drawImage(undoStack.isEmpty() ? null : undoStack.peek(), 0, 0, null);
+        g2.setColor(new Color(128, 128, 128, 128));
+        g2.drawRect(borracha.x - borracha.largura/2, borracha.y - borracha.largura/2, borracha.largura, borracha.largura);
+        g2.dispose();
+        // Solicita repaint, fazendo o painel desenhar a imagem atualizada
+        pnlPaint.repaint();
+    }
+    
+    private void atualizarZoom() {
+        BufferedImage temp = new BufferedImage(
+            pnlPaint.getWidth(), 
+            pnlPaint.getHeight(), 
+            BufferedImage.TYPE_INT_ARGB
+        );
+        Graphics2D g2 = temp.createGraphics();
+        g2.scale(zoomFactor, zoomFactor);
+        g2.drawImage(undoStack.isEmpty() ? null : undoStack.peek(), 0, 0, null);
+        pnlPaint.repaint();
+        g2.dispose();
+    }
+    
+    private void atualizarPreview(MouseEvent evt) {
+        Graphics2D g2 = previewLayer.createGraphics();
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.CLEAR));
+        g2.fillRect(0, 0, previewLayer.getWidth(), previewLayer.getHeight());
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER));
+        switch(tipoFigura) {
+            case tfCirculo:
+                g2.setColor(new Color(128, 128, 128, 128));
+                g2.drawOval(evt.getX() - 20, evt.getY() - 20, 40, 40);
+                break;
+            case tfRetangulo:
+                g2.setColor(new Color(128, 128, 128, 128));
+                g2.drawRect(evt.getX() - 20, evt.getY() - 20, 40, 40);
+                break;
+            // Adicione casos para outras ferramentas
+        }
+        g2.dispose();
+        pnlPaint.repaint();
+    }
+
+    private void salvarDesenho() {
+        JFileChooser fc = new JFileChooser();
+        if (fc.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                BufferedImage bi = new BufferedImage(
+                    pnlPaint.getWidth(),
+                    pnlPaint.getHeight(),
+                    BufferedImage.TYPE_INT_ARGB
+                );
+                pnlPaint.paint(bi.getGraphics());
+                ImageIO.write(bi, "png", fc.getSelectedFile());
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+    
+    private void carregarDesenho() {
+        JFileChooser fc = new JFileChooser();
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                BufferedImage bi = ImageIO.read(fc.getSelectedFile());
+                Graphics2D g2 = (Graphics2D) pnlPaint.getGraphics();
+                g2.clearRect(0, 0, pnlPaint.getWidth(), pnlPaint.getHeight());
+                g2.drawImage(bi, 0, 0, null);
+                salvarEstado();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+    
+    private void BtnSprayMouseClicked(java.awt.event.MouseEvent evt) {
+        alternarFerramentas(TipoFigura.tfSpray);
+    }
+
+    private void alternarFerramentas(TipoFigura tipo) {
+        tipoFigura = tipo;
+        
+        // Esconde todos os controles especiais
+        spraySlider.setVisible(false);
+        sprayLabel.setVisible(false);
+        
+        // Mostra apenas os controles relevantes para a ferramenta selecionada
+        if (tipo == TipoFigura.tfSpray) {
+            spraySlider.setVisible(true);
+            sprayLabel.setVisible(true);
+        }
+        
+        // Atualiza o estado dos checkboxes
+        ChkArea.setEnabled(tipo == TipoFigura.tfCirculo || 
+                          tipo == TipoFigura.tfRetangulo || 
+                          tipo == TipoFigura.tfPoligono);
+                          
+        ChkComprimento.setEnabled(tipo == TipoFigura.tfReta);
     }
 
     /**
@@ -173,6 +410,11 @@ public class Interface extends javax.swing.JFrame {
         });
 
         ChkArea.setText("Exibir Area");
+        ChkArea.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                ChkAreaActionPerformed(evt);
+            }
+        });
 
         pnlCorInterna.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseClicked(java.awt.event.MouseEvent evt) {
@@ -318,6 +560,7 @@ public class Interface extends javax.swing.JFrame {
     }//GEN-LAST:event_pnlPaintMouseDragged
 
     private void pnlPaintMousePressed(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_pnlPaintMousePressed
+    salvarEstado();
     if (tipoFigura == TipoFigura.tfPonto){
         Ponto p = new Ponto();
         p.cor = pnlCorExterna.getBackground();
@@ -400,9 +643,20 @@ public class Interface extends javax.swing.JFrame {
     }//GEN-LAST:event_pnlPaintMouseReleased
 
     private void ChkComprimentoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_ChkComprimentoActionPerformed
-        // TODO add your handling code here:
+        if(tipoFigura == TipoFigura.tfReta){
+            reta.exibirCompr = ChkComprimento.isSelected();
+            pnlPaint.repaint();
+        }
     }//GEN-LAST:event_ChkComprimentoActionPerformed
 
+    private void ChkAreaActionPerformed(java.awt.event.ActionEvent evt) {
+        // Atualiza as propriedades das figuras 2D para que exibam a área
+        circulo.exibirArea = ChkArea.isSelected();
+        retangulo.exibirArea = ChkArea.isSelected();
+        poligono.exibirArea = ChkArea.isSelected();
+        pnlPaint.repaint();
+    }
+    
     private void BtnPiramideActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_BtnPiramideActionPerformed
         // TODO add your handling code here:
     }//GEN-LAST:event_BtnPiramideActionPerformed
@@ -420,39 +674,36 @@ public class Interface extends javax.swing.JFrame {
     }//GEN-LAST:event_pnlCorExternaActionPerformed
 
     private void BtnPontoMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnPontoMouseClicked
-        tipoFigura = TipoFigura.tfPonto;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfPonto);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnPontoMouseClicked
 
     private void BtnPoligonoMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnPoligonoMouseClicked
-        tipoFigura = TipoFigura.tfPoligono;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfPoligono);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnPoligonoMouseClicked
 
     private void BtnPiramideMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnPiramideMouseClicked
-        tipoFigura = TipoFigura.tfPiramide;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfPiramide);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnPiramideMouseClicked
 
     private void BtnRetaMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnRetaMouseClicked
-        tipoFigura = TipoFigura.tfReta;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfReta);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnRetaMouseClicked
 
     private void BtnCirculoMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnCirculoMouseClicked
-       tipoFigura = TipoFigura.tfCirculo; // TODO add your handling code here:
+       alternarFerramentas(TipoFigura.tfCirculo); // TODO add your handling code here:
     }//GEN-LAST:event_BtnCirculoMouseClicked
 
     private void BtnRetanguloMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnRetanguloMouseClicked
-        tipoFigura = TipoFigura.tfRetangulo;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfRetangulo);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnRetanguloMouseClicked
 
-    private void BtnSprayMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnSprayMouseClicked
-        tipoFigura = TipoFigura.tfSpray;        // TODO add your handling code here:
-    }//GEN-LAST:event_BtnSprayMouseClicked
-
     private void BtnBorrachaMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnBorrachaMouseClicked
-        tipoFigura = TipoFigura.tfBorracha;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfBorracha);        
+        pnlPaint.requestFocusInWindow(); // Dar foco ao painel quando selecionar a borracha
     }//GEN-LAST:event_BtnBorrachaMouseClicked
 
     private void BtnCilindroMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_BtnCilindroMouseClicked
-        tipoFigura = TipoFigura.tfCilindro;        // TODO add your handling code here:
+        alternarFerramentas(TipoFigura.tfCilindro);        // TODO add your handling code here:
     }//GEN-LAST:event_BtnCilindroMouseClicked
 
     /**

@@ -17,12 +17,33 @@ public class Poligono extends D2 {
     
     @Override
     public float area() {
-        return -1;
+        if(listaPontos.size() < 3) return 0;
+        
+        float area = 0;
+        int j = listaPontos.size() - 1;
+        
+        for(int i = 0; i < listaPontos.size(); i++) {
+            area += (listaPontos.get(j).x + listaPontos.get(i).x) * 
+                    (listaPontos.get(j).y - listaPontos.get(i).y);
+            j = i;
+        }
+        
+        return Math.abs(area/2);
     }
 
     @Override
     public float perimetro() {
-        return -1;
+        if(listaPontos.size() < 3) return 0;
+        
+        float perimetro = 0;
+        for(int i = 0; i < listaPontos.size(); i++) {
+            int j = (i + 1) % listaPontos.size();
+            perimetro += Math.sqrt(
+                Math.pow(listaPontos.get(i).x - listaPontos.get(j).x, 2) +
+                Math.pow(listaPontos.get(i).y - listaPontos.get(j).y, 2)
+            );
+        }
+        return perimetro;
     }
     
     public void adicionarPonto(int x, int y){
@@ -48,7 +69,8 @@ public class Poligono extends D2 {
         g.fillPolygon(pontosX, pontosY,listaPontos.size());
         g.setColor(cor);
         g.drawPolygon(pontosX, pontosY,listaPontos.size());
-        removerPontos();
+        // Removido removerPontos(), para evitar perda dos pontos em repaints
+        // removerPontos();
     }
     
 }

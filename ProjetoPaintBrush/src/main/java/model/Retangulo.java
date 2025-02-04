@@ -18,10 +18,15 @@ public class Retangulo extends D2 {
     @Override public void desenhar(Graphics g){
         
         super.desenhar(g); 
-        g.setColor (corInterna);
-        g.fillRect(super.x, super.y, base, largura);/*desenha o retangulo preenchido*/
-        g.setColor (cor);
-        g.drawRect(super.x, super.y, base, largura);/*desenha o retangulo sem preenchimento*/
+        java.awt.Graphics2D g2 = (java.awt.Graphics2D) g;
+        g2.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(corInterna);
+        g2.fillRect(super.x, super.y, base, largura);/*desenha o retangulo preenchido*/
+        g2.setColor(cor);
+        g2.drawRect(super.x, super.y, base, largura);/*desenha o retangulo sem preenchimento*/
+        if(exibirArea){
+            g2.drawString("Área: " + area(), super.x + base/2 - 20, super.y + largura/2);
+        }
     }
 }
 
